@@ -1,4 +1,4 @@
-````markdown
+# Dots & Boxes GNN + MCTS
 
 A Graph Neural Network (GNN) with Monte Carlo Tree Search (MCTS) agent for n×n Dots & Boxes.
 
@@ -6,11 +6,12 @@ A Graph Neural Network (GNN) with Monte Carlo Tree Search (MCTS) agent for n×n 
 
 ## 📦 Installation
 
-1. **Clone repo**  
+1. **Clone repo**
+
    ```bash
    git clone https://github.com/yourusername/dots_and_boxes_gnn.git
    cd dots_and_boxes_gnn
-````
+   ```
 
 2. **Create & activate a virtualenv**
 
@@ -21,13 +22,13 @@ A Graph Neural Network (GNN) with Monte Carlo Tree Search (MCTS) agent for n×n 
 
 3. **Install PyTorch & PyG**
 
-   * GPU (CUDA 11.7 example):
+   * **GPU (CUDA 11.7 example):**
 
      ```bash
      pip install torch torchvision --extra-index-url https://download.pytorch.org/whl/cu117
      pip install torch_geometric
      ```
-   * CPU-only:
+   * **CPU-only:**
 
      ```bash
      pip install torch torchvision
@@ -76,7 +77,7 @@ Edit hyperparameters in `scripts/run_train.sh` (e.g. `BOARD_SIZE=5`, `TOTAL_ITER
 bash scripts/run_train.sh
 ```
 
-This runs:
+That runs:
 
 ```bash
 python train/train_loop.py \
@@ -92,7 +93,7 @@ Checkpoints are saved as `gnn_dotbox_n${BOARD_SIZE}_best.pth`.
 
 ### 2. Evaluate
 
-**Vs. random**:
+**Vs. random:**
 
 ```bash
 python eval/evaluate_agent.py \
@@ -102,7 +103,7 @@ python eval/evaluate_agent.py \
   --num_games 200
 ```
 
-**Vs. greedy‐chain**:
+**Vs. greedy-chain:**
 
 ```bash
 python eval/evaluate_agent.py \
@@ -112,7 +113,7 @@ python eval/evaluate_agent.py \
   --num_games 200
 ```
 
-**Play vs. human (CLI)**:
+**Play vs. human (CLI):**
 
 ```bash
 python eval/evaluate_agent.py \
@@ -148,19 +149,19 @@ python eval/evaluate_agent.py \
 
   * vs. random/greedy: 200 games
 
-Adjust for your compute/GPU.
+Adjust these for your compute/GPU.
 
 ---
 
 ## 🚀 Overview
 
-1. **Environment** (`env/game_env.py`):
+1. **Environment** (`env/game_env.py`)
 
    * Builds line-graph: E = 2 · n · (n+1) nodes.
    * State = `[f1, f2, f3]` arrays (drawn, ownership, slack).
    * `step(action)` returns `(obs, reward, done, info)` with `info["boxes"]` at terminal.
 
-2. **GNN** (`models/gnn_net.py`):
+2. **GNN** (`models/gnn_net.py`)
 
    ```python
    class DotBoxGNN(nn.Module):
@@ -183,16 +184,16 @@ Adjust for your compute/GPU.
            return logits, v
    ```
 
-3. **MCTS** (`mcts/mcts.py` + `node.py`):
+3. **MCTS** (`mcts/mcts.py` + `node.py`)
 
    * `MCTSNode` stores `{N, W, Q, P}` per action, and `player`.
    * `MCTS`:
 
-     * `_evaluate(env)`: gets `(logits, v)` from GNN.
-     * `_playout(root_env, root_node)`: selection → expansion (call GNN) → backprop (flip v when turn switches).
-     * `get_move(env)`: run n\_playout playouts, return `(best_action, π)` where π\[a] ∝ N\[a].
+     * `_evaluate(env)`: calls GNN → `(logits, v)`.
+     * `_playout(root_env, root_node)`: selection → expansion → backprop (flip v when turn switches).
+     * `get_move(env)`: run `n_playout` playouts, return `(best_action, π)` with π\[a] ∝ N\[a].
 
-4. **Training** (`train/train_loop.py`):
+4. **Training** (`train/train_loop.py`)
 
    * Self-play → collect `(state, edge_index, legal_mask, π, z)`.
    * Store in `ReplayBuffer`.
@@ -212,6 +213,3 @@ Adjust for your compute/GPU.
 ---
 
 Happy Training! 🎯
-
-```
-```
