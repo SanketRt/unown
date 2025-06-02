@@ -9,8 +9,7 @@ A Graph Neural Network (GNN) with Monte Carlo Tree Search (MCTS) agent for n×n 
 1. **Clone repo**
 
    ```bash
-   git clone https://github.com/yourusername/dots_and_boxes_gnn.git
-   cd dots_and_boxes_gnn
+   git clone https://github.com/SanketRt/unown.git
    ```
 
 2. **Create & activate a virtualenv**
