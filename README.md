@@ -1,5 +1,4 @@
 ````markdown
-# Dots & Boxes GNN + MCTS
 
 A Graph Neural Network (GNN) with Monte Carlo Tree Search (MCTS) agent for n×n Dots & Boxes.
 
