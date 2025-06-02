@@ -33,33 +33,31 @@ class game_env:
         if self.f1[action] != 0:
             raise ValueError("Illegal action selected")
 
-        # 1) Draw the edge:
+        # Draw the edge:
         self.f1[action] = 1
         self.f2[action] = self.current_player
 
-        # 2) Check if this completes 1×1 box(es):
+        # Check if this completes 1×1 box(es):
         completed_boxes = 0
         for cell in adjacent_boxes_of_edge(action, self.n):
             # Count how many edges around that box are now drawn:
             if count_edges_drawn(cell,self.f1,self.n) == 4:
                 completed_boxes += 1
 
-        # 3) Update slack features: For each neighbor j ∈ adj_list[action]:
-        #    Recompute f3[j] based on updated f1 around that edge.
+        # Update slack features: For each neighbor j ∈ adj_list[action]:
+        # Recompute f3[j] based on updated f1 around that edge.
         for j in self.adj_list[action]:
             self.f3[j] = count_adjacent_three_sided_boxes(j, self.f1, self.n)
 
-        # 4) Assign reward and update box_counts:
+        # Assign reward and update box_counts:
         if completed_boxes > 0:
-            reward = float(completed_boxes)  # you could also scale or use +1 only at terminal
+            reward = float(completed_boxes)  
             self.box_counts[self.current_player] += completed_boxes
-            # Player gets another turn → current_player unchanged
         else:
             reward = 0.0
-            # Switch turns:
             self.current_player *= -1
 
-        # 5) Check for terminal (all edges drawn):
+        # Check for terminal (all edges drawn):
         done = (self.f1.sum() == self.E)
         if done:
             # Final reward: +1 for win, -1 for loss, 0 for tie
@@ -70,7 +68,7 @@ class game_env:
             elif a_score < b_score:
                 final_reward = -1.0 if self.current_player == +1 else +1.0
             else:
-                final_reward = 0.0
+                final_reward = 0.005
             return (self._get_observation(), final_reward, True, 
                     {"boxes": (a_score, b_score)})
 
