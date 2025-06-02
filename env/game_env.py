@@ -1,4 +1,5 @@
 import numpy as np
+import torch
 from utils import *
 
 class game_env:
@@ -6,6 +7,17 @@ class game_env:
         self.n = n
         self.E = 2 * n * (n + 1)                
         self.adj_list = build_line_graph(n)  
+        src = []
+        dst = []
+        for u in range(self.E):
+            for v in self.adj_list[u]:
+                # Add both directions (undirected graph)
+                src.append(u)
+                dst.append(v)
+        edge_index = torch.tensor([src, dst], dtype=torch.long)
+        self.adj_edge_index_tensor = edge_index  # <— now run_selfplay_one_game can see it
+
+        # Initialize board state variables
         self.reset()
 
     def reset(self):
@@ -69,8 +81,7 @@ class game_env:
                 final_reward = -1.0 if self.current_player == +1 else +1.0
             else:
                 final_reward = 0.005
-            return (self._get_observation(), final_reward, True, 
-                    {"boxes": (a_score, b_score)})
+            return (self._get_observation(), final_reward, True, {"boxes": (a_score, b_score)})
 
         # If not done, return intermediate reward 0.0
         return (self._get_observation(), reward, False, {"boxes_gained": completed_boxes})
