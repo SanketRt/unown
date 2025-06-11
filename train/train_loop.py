@@ -7,15 +7,15 @@ from replay_buffer import ReplayBuffer
 from models.gnn_net import GNN
 from selfplay import *
 from env.game_env import game_env
+import random
 
 class DotBShotDataset(Dataset):
     def __init__(self, data_list):
-        self.data = data_list   # list of (state, edge_index, legal_mask, pi, z)
+        self.data = data_list   # (state, edge_index, legal_mask, pi, z)
     def __len__(self):
         return len(self.data)
     def __getitem__(self, idx):
         s, eidx, lmask, pi, z = self.data[idx]
-        # Convert to tensors:
         s_t = torch.tensor(s, dtype=torch.float)       # [E×3]
         l_t = torch.tensor(lmask, dtype=torch.bool)     # [E]
         pi_t = torch.tensor(pi, dtype=torch.float)      # [E]
@@ -65,12 +65,10 @@ def train_network(net, optimizer, dataloader, device):
     return total_loss / len(dataloader.dataset)
 
 def main_training_loop(n, device, total_iters=200, games_per_iter=25):
-    # Initialize:
     net_best = GNN(n=n, hidden_dim=64).to(device)
     optimizer = torch.optim.Adam(net_best.parameters(), lr=5e-4, weight_decay=1e-5)
     buffer = ReplayBuffer(capacity=200000)
 
-    # MCTS params (can tweak)
     mcts_params = {
         "c_puct": 1.0,
         "n_playout": 400,
@@ -78,53 +76,43 @@ def main_training_loop(n, device, total_iters=200, games_per_iter=25):
     }
 
     for iteration in range(1, total_iters + 1):
-        # 1) Generate self‐play data
         data_list = generate_selfplay_data(net_best, n, games_per_iter, mcts_params)
-        # 2) Push to buffer
         for (s, eidx, lmask, pi, z) in data_list:
             buffer.push(s, eidx, lmask, pi, z)
 
-        # 3) Sample a dataset of size = min(len(buffer), 50k) for training
         sample_size = min(len(buffer), 50000)
         sample_data = random.sample(buffer.buffer, sample_size)
         dataset = DotBShotDataset(sample_data)
         dataloader = DataLoader(dataset, batch_size=256, shuffle=True)
 
-        # 4) Train a new network clone
         net_temp = GNN(n=n, hidden_dim=64).to(device)
         net_temp.load_state_dict(net_best.state_dict())  # start from best
         optimizer_temp = torch.optim.Adam(net_temp.parameters(), lr=5e-4, weight_decay=1e-5)
 
-        # Train for a few epochs (e.g. 5 epochs)
         for epoch in range(1, 6):
             loss_val = train_network(net_temp, optimizer_temp, dataloader, device)
 
-        # 5) Evaluate net_temp vs. net_best in 20 games
         win_temp = 0
         for game_id in range(20):
-            # Alternate who goes first to avoid bias:
             first_player = +1 if game_id < 10 else -1
             winner = play_match(net_temp, net_best, n, mcts_params, first_player)
             if winner == +1:
                 win_temp += 1
 
-        # 6) If net_temp wins ≥ 12/20, accept it
         if win_temp >= 12:
             net_best = net_temp
             print(f"Iteration {iteration}: New best network accepted (won {win_temp}/20).")
         else:
             print(f"Iteration {iteration}: Keeping old best (temp won {win_temp}/20).")
 
-        # 7) Periodic evaluation vs. baseline (random, greedy chain)
+        # Periodic evaluation vs. baseline (random, greedy chain)
         if iteration % 5 == 0:
             win_rand = evaluate_against_random(net_best, n, mcts_params, num_games=200)
             win_greedy = evaluate_against_greedy_chain(net_best, n, mcts_params, num_games=200)
             print(f" Iter {iteration}: Win vs. random = {win_rand}/200; vs. greedy = {win_greedy}/200")
 
-    # At end, save final model
     torch.save(net_best.state_dict(), f"gnn_dotbox_n{n}_best.pth")
-# train/train_loop.py (continued)
-import random
+
 
 def play_match(net_A, net_B, n, mcts_params, first_player=+1):
     """
@@ -143,7 +131,13 @@ def play_match(net_A, net_B, n, mcts_params, first_player=+1):
         action, _ = mcts_current.get_move(env)
         _, reward, done, info = env.step(action)
         if done:
-            a_score, b_score = info["boxes"]
+            _boxes = info.get("boxes", None)
+            if _boxes is None:
+                raise KeyError(f"Expected key 'boxes' in `info` at terminal step, got {info!r}")
+            if not (isinstance(_boxes, tuple) and len(_boxes) == 2):
+                raise ValueError(f"Expected `info['boxes']` to be a 2-tuple, got: {_boxes!r}")
+            a_score, b_score = _boxes
+
             if a_score > b_score:
                 return +1 if first_player == +1 else -1
             elif a_score < b_score:
@@ -155,7 +149,6 @@ def play_match(net_A, net_B, n, mcts_params, first_player=+1):
 def evaluate_against_random(net, n, mcts_params, num_games=200):
     wins = 0
     for i in range(num_games):
-        # Random plays the other side
         env = game_env(n=n)
         current_player = +1 if (i % 2 == 0) else -1
         env.current_player = current_player
@@ -165,13 +158,18 @@ def evaluate_against_random(net, n, mcts_params, num_games=200):
             if env.current_player == current_player:
                 action, _ = mcts_net.get_move(env)
             else:
-                # Random opponent
                 legal = env._get_observation()[1]
                 action = random.choice(np.where(legal == 1)[0])
 
             _, reward, done, info = env.step(action)
             if done:
-                a_score, b_score = info["boxes"]
+                _boxes = info.get("boxes", None)
+                if _boxes is None:
+                    raise KeyError(f"Expected key 'boxes' in `info` at terminal step, got {info!r}")
+                if not (isinstance(_boxes, tuple) and len(_boxes) == 2):
+                    raise ValueError(f"Expected `info['boxes']` to be a 2-tuple, got: {_boxes!r}")
+                a_score, b_score = _boxes
+
                 net_score = a_score if current_player == +1 else b_score
                 opp_score = b_score if current_player == +1 else a_score
                 if net_score > opp_score:
@@ -208,7 +206,13 @@ def evaluate_against_greedy_chain(net, n, mcts_params, num_games=200):
 
             _, reward, done, info = env.step(action)
             if done:
-                a_score, b_score = info["boxes"]
+                _boxes = info.get("boxes", None)
+                if _boxes is None:
+                    raise KeyError(f"Expected key 'boxes' in `info` at terminal step, got {info!r}")
+                if not (isinstance(_boxes, tuple) and len(_boxes) == 2):
+                    raise ValueError(f"Expected `info['boxes']` to be a 2-tuple, got: {_boxes!r}")
+                a_score, b_score = _boxes
+
                 net_score = a_score if current_player == +1 else b_score
                 opp_score = b_score if current_player == +1 else a_score
                 if net_score > opp_score:

@@ -11,24 +11,19 @@ class game_env:
         dst = []
         for u in range(self.E):
             for v in self.adj_list[u]:
-                # Add both directions (undirected graph)
                 src.append(u)
                 dst.append(v)
         edge_index = torch.tensor([src, dst], dtype=torch.long)
-        self.adj_edge_index_tensor = edge_index  # <— now run_selfplay_one_game can see it
+        self.adj_edge_index_tensor = edge_index  
 
-        # Initialize board state variables
         self.reset()
 
     def reset(self):
-        # Initialize node features:
-        #   f1 = zeros(E), f2 = zeros(E), f3 = zeros(E)
-        #   current_player = +1  (we’ll call +1 “agent A”, –1 “agent B”)
         self.f1 = np.zeros(self.E, dtype=np.int8)
         self.f2 = np.zeros(self.E, dtype=np.int8)
-        self.f3 = compute_all_slacks(self.f1, self.n)  # initially zero everywhere
+        self.f3 = compute_all_slacks(self.f1, self.n) 
         self.current_player = +1
-        self.box_counts = {+1: 0, -1: 0}  # how many boxes each side has
+        self.box_counts = {+1: 0, -1: 0}  
         return self._get_observation()
 
     def _get_observation(self):
