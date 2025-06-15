@@ -3,11 +3,13 @@ import torch
 import torch.nn.functional as F
 from torch.utils.data import DataLoader, Dataset
 import random
-from train.replay_buffer    import ReplayBuffer
-from train.selfplay         import *
-from models.gnn_net         import GNN
-from env.game_env           import game_env
+from train.replay_buffer import ReplayBuffer
+from train.selfplay import *
+from models.gnn_net import GNN
+from env.game_env import game_env
 import argparse
+from torch.utils.tensorboard import SummaryWriter
+
 
 class DotBShotDataset(Dataset):
     def __init__(self, data_list):
@@ -74,6 +76,8 @@ def main_training_loop(n, device, total_iters=200, games_per_iter=25):
         "n_playout": 100,
         "device": device,
     }
+    writer = SummaryWriter(log_dir=f"runs/board{n}")
+
 
     for iteration in range(1, total_iters + 1):
         print(f"\n=== Iteration {iteration}/{total_iters} ===")
@@ -82,6 +86,8 @@ def main_training_loop(n, device, total_iters=200, games_per_iter=25):
         print(f" done. Collected {len(data_list)} positions.")
         for (s, eidx, lmask, pi, z) in data_list:
             buffer.push(s, eidx, lmask, pi, z)
+        writer.add_scalar("SelfPlay/BufferSize", len(buffer), iteration)
+
         print(f"  Buffer size: {len(buffer)}")
 
         sample_size = min(len(buffer), 50000)
@@ -96,6 +102,7 @@ def main_training_loop(n, device, total_iters=200, games_per_iter=25):
         for epoch in range(1, 6):
             loss_val = train_network(net_temp, optimizer_temp, dataloader, device)
             print(f"    Epoch {epoch} loss: {loss_val:.4f}")
+            writer.add_scalar("Train/Loss", loss_val, (iteration-1)*5 + epoch)
 
         win_temp = 0
         for game_id in range(20):
@@ -103,7 +110,9 @@ def main_training_loop(n, device, total_iters=200, games_per_iter=25):
             winner = play_match(net_temp, net_best, n, mcts_params, first_player)
             if winner == +1:
                 win_temp += 1
+        win_rate_best = win_temp / 20
         print(f"  Eval vs. best: {win_temp}/20 wins")
+        writer.add_scalar("Eval/Win_vs_Best", win_rate_best, iteration)
         if win_temp >= 12:
             net_best = net_temp
             print(f"Iteration {iteration}: New best network accepted (won {win_temp}/20).")
@@ -115,9 +124,14 @@ def main_training_loop(n, device, total_iters=200, games_per_iter=25):
             print("  Running periodic evaluation…", end="", flush=True)
             win_rand = evaluate_against_random(net_best, n, mcts_params, num_games=200)
             win_greedy = evaluate_against_greedy_chain(net_best, n, mcts_params, num_games=200)
-            print(f" Iter {iteration}: Win vs. random = {win_rand}/200; vs. greedy = {win_greedy}/200")
+            win_rate_rand = win_rand/200
+            win_rate_greedy = win_greedy/  200
+            print(f" Iter {iteration}: vs random={win_rand}/200; vs greedy={win_greedy}/200")
+            writer.add_scalar("Eval/Win_vs_Random",   win_rate_rand,   iteration)
+            writer.add_scalar("Eval/Win_vs_Greedy",   win_rate_greedy, iteration)
 
     torch.save(net_best.state_dict(), f"gnn_dotbox_n{n}_best.pth")
+    writer.close()
 
 
 def play_match(net_A, net_B, n, mcts_params, first_player=+1):
