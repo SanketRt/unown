@@ -128,6 +128,7 @@ def main_training_loop(n, device, total_iters=200, games_per_iter=25):
             win_rate_greedy = win_greedy/  200
             print(f" Iter {iteration}: vs random={win_rand}/200; vs greedy={win_greedy}/200")
             writer.add_scalar("Eval/Win_vs_Random",   win_rate_rand,   iteration)
+            
             writer.add_scalar("Eval/Win_vs_Greedy",   win_rate_greedy, iteration)
 
     torch.save(net_best.state_dict(), f"gnn_dotbox_n{n}_best.pth")
