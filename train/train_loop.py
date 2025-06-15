@@ -3,11 +3,11 @@ import torch
 import torch.nn.functional as F
 from torch.utils.data import DataLoader, Dataset
 import random
-from replay_buffer import ReplayBuffer
-from models.gnn_net import GNN
-from selfplay import *
-from env.game_env import game_env
-import random
+from train.replay_buffer    import ReplayBuffer
+from train.selfplay         import *
+from models.gnn_net         import GNN
+from env.game_env           import game_env
+import argparse
 
 class DotBShotDataset(Dataset):
     def __init__(self, data_list):
@@ -65,20 +65,24 @@ def train_network(net, optimizer, dataloader, device):
     return total_loss / len(dataloader.dataset)
 
 def main_training_loop(n, device, total_iters=200, games_per_iter=25):
-    net_best = GNN(n=n, hidden_dim=64).to(device)
+    net_best = GNN(n=n, hidden_dim=32).to(device)
     optimizer = torch.optim.Adam(net_best.parameters(), lr=5e-4, weight_decay=1e-5)
     buffer = ReplayBuffer(capacity=200000)
 
     mcts_params = {
         "c_puct": 1.0,
-        "n_playout": 400,
+        "n_playout": 100,
         "device": device,
     }
 
     for iteration in range(1, total_iters + 1):
+        print(f"\n=== Iteration {iteration}/{total_iters} ===")
+        print(f"  Self-play: playing {games_per_iter} games…", end="", flush=True)
         data_list = generate_selfplay_data(net_best, n, games_per_iter, mcts_params)
+        print(f" done. Collected {len(data_list)} positions.")
         for (s, eidx, lmask, pi, z) in data_list:
             buffer.push(s, eidx, lmask, pi, z)
+        print(f"  Buffer size: {len(buffer)}")
 
         sample_size = min(len(buffer), 50000)
         sample_data = random.sample(buffer.buffer, sample_size)
@@ -88,9 +92,10 @@ def main_training_loop(n, device, total_iters=200, games_per_iter=25):
         net_temp = GNN(n=n, hidden_dim=64).to(device)
         net_temp.load_state_dict(net_best.state_dict())  # start from best
         optimizer_temp = torch.optim.Adam(net_temp.parameters(), lr=5e-4, weight_decay=1e-5)
-
+        print(f"  Training for 5 epochs on {sample_size} samples (batch=256)…")
         for epoch in range(1, 6):
             loss_val = train_network(net_temp, optimizer_temp, dataloader, device)
+            print(f"    Epoch {epoch} loss: {loss_val:.4f}")
 
         win_temp = 0
         for game_id in range(20):
@@ -98,7 +103,7 @@ def main_training_loop(n, device, total_iters=200, games_per_iter=25):
             winner = play_match(net_temp, net_best, n, mcts_params, first_player)
             if winner == +1:
                 win_temp += 1
-
+        print(f"  Eval vs. best: {win_temp}/20 wins")
         if win_temp >= 12:
             net_best = net_temp
             print(f"Iteration {iteration}: New best network accepted (won {win_temp}/20).")
@@ -107,6 +112,7 @@ def main_training_loop(n, device, total_iters=200, games_per_iter=25):
 
         # Periodic evaluation vs. baseline (random, greedy chain)
         if iteration % 5 == 0:
+            print("  Running periodic evaluation…", end="", flush=True)
             win_rand = evaluate_against_random(net_best, n, mcts_params, num_games=200)
             win_greedy = evaluate_against_greedy_chain(net_best, n, mcts_params, num_games=200)
             print(f" Iter {iteration}: Win vs. random = {win_rand}/200; vs. greedy = {win_greedy}/200")
@@ -219,3 +225,20 @@ def evaluate_against_greedy_chain(net, n, mcts_params, num_games=200):
                     wins += 1
                 break
     return wins
+if __name__ == "__main__":
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--board_size", type=int, default=5)
+    parser.add_argument("--device",      type=str, default="cpu")
+    parser.add_argument("--total_iters", type=int, default=200)
+    parser.add_argument("--games_per_iter", type=int, default=25)
+    args = parser.parse_args()
+    
+
+    main_training_loop(
+        n=args.board_size,
+        device=torch.device(args.device),
+        total_iters=args.total_iters,
+        games_per_iter=args.games_per_iter
+    )
+    

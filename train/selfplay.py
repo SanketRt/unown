@@ -11,17 +11,16 @@ def run_selfplay_one_game(net, n, mcts_params):
     """
     env = game_env(n=n)
     mcts = MCTS(net, **mcts_params)
-    trajectory = []  # will store (state, edge_index, legal_mask, pi, player_id)
+    trajectory = []  # (state, edge_index, legal_mask, pi, player_id)
 
     while True:
-        # 1) Get current observation
+        # current observation
         state, legal_mask = env._get_observation()  # state: [E×3], legal_mask: [E]
 
-        # 2) Run MCTS → (best_move, pi)
+        # Run MCTS 
         action, pi = mcts.get_move(env)
 
-        # 3) Record this state for later training
-        # Deep‐copy the numpy arrays; clone the PyTorch tensor
+        # clone the PyTorch tensor
         trajectory.append((
             state.copy(),
             env.adj_edge_index_tensor.clone(),
@@ -30,12 +29,15 @@ def run_selfplay_one_game(net, n, mcts_params):
             env.current_player
         ))
 
-        # 4) Take the step
         _, reward, done, info = env.step(action)
 
         if done:
-            # info == {"boxes": (a_score, b_score)}
-            a_score, b_score = info["boxes"]  # <-- only unpack here
+            _boxes = info.get("boxes", None)
+            if _boxes is None:
+                raise KeyError(f"Expected key 'boxes' in `info` at terminal step, got {info!r}")
+            if not (isinstance(_boxes, tuple) and len(_boxes) == 2):
+                raise ValueError(f"Expected `info['boxes']` to be a 2-tuple, got: {_boxes!r}")
+            a_score, b_score = _boxes
             if a_score > b_score:
                 winner = +1
             elif a_score < b_score:

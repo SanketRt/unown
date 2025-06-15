@@ -1,6 +1,6 @@
 import numpy as np
 import torch
-from utils import *
+from env.utils import *
 
 class game_env:
     def __init__(self, n):
